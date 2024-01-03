@@ -10,6 +10,7 @@ use std::time::Duration;
 use tokio::{io, io::AsyncBufReadExt, select};
 use tracing_subscriber::EnvFilter;
 use std::io::{stdout, Write};
+use colored::Colorize;
 
 // We create a custom network behaviour that combines Gossipsub and Mdns.
 #[derive(NetworkBehaviour)]
@@ -91,7 +92,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             event = swarm.select_next_some() => match event {
                 SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                     for (peer_id, _multiaddr) in list {
-                        println!("mDNS discovered a new peer: {peer_id}");
+                        println!("{}", "mDNS discovered a new peer: {peer_id}");
                         swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                     }
                 },
@@ -116,4 +117,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     }
+}
+
+fn say_sys(msg: &str) {
+    println!("{}", msg);
 }
