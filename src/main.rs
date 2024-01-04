@@ -71,34 +71,49 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut stdin = io::BufReader::new(io::stdin()).lines();
 
     // Listen on all interfaces and whatever port the OS assigns
-    swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
-    swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
+    swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse().unwrap()).expect("filed to start quic listener");
+    swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse().unwrap()).expect("filed to start tcp listener");
 
     println!("Enter messages via STDIN and they will be sent to connected peers using Gossipsub");
+
+    let mut to: String = String::from("𝛌");
 
     // Kick it off
     loop {
         select! {
             Ok(Some(line)) = stdin.next_line() => {
+                if line.trim().eq_ignore_ascii_case("exit") || line.trim().eq_ignore_ascii_case("q") {
+                    // Exit the loop when the user enters "exit"
+                    break;
+                }
+                if line.trim().eq_ignore_ascii_case("list") || line.trim().eq_ignore_ascii_case("online") || line.trim().eq_ignore_ascii_case("peers")  {
+                    for peer_id in swarm.behaviour_mut().gossipsub.all_peers() {
+                        println!("{}", peer_id.0.to_string())
+                    }
+                }
+                if line.trim().eq_ignore_ascii_case("to") {
+                    let peers: Vec<_> = swarm.behaviour_mut().gossipsub.all_peers().collect();
+                    to = peers[0].0.to_string();
+                }
                 if let Err(e) = swarm
                     .behaviour_mut().gossipsub
                     .publish(topic.clone(), line.as_bytes()) {
+                    print!("\x1B[2K\r");
                     println!("Publish error: {e:?}");
-                } else {
                 }
-                print!("𝛌>");
-                stdout().flush();
             }
             event = swarm.select_next_some() => match event {
                 SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Discovered(list))) => {
                     for (peer_id, _multiaddr) in list {
-                        println!("{}", "mDNS discovered a new peer: {peer_id}");
+                        print!("\x1B[2K\r");
+                        println!("{}: {}", "mDNS discovered a new peer:", peer_id);
                         swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                     }
                 },
                 SwarmEvent::Behaviour(MyBehaviourEvent::Mdns(mdns::Event::Expired(list))) => {
                     for (peer_id, _multiaddr) in list {
-                        println!("mDNS discover peer has expired: {peer_id}");
+                        print!("\x1B[2K\r");
+                        println!("mDNS discover peer has expired: {}", peer_id);
                         swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
                     }
                 },
@@ -106,17 +121,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     propagation_source: peer_id,
                     message_id: id,
                     message,
-                })) => println!(
-                        "Got message: '{}' with id: {id} from peer: {peer_id}",
-                        String::from_utf8_lossy(&message.data),
-                    ),
+                })) => {
+                    print!("\x1B[2K\r");
+                    println!(
+                        "{}: {}",
+                        peer_id.to_string(),
+                        String::from_utf8_lossy(&message.data)
+                    );
+                },
                 SwarmEvent::NewListenAddr { address, .. } => {
+                    print!("\x1B[2K\r");
                     println!("Local node is listening on {address}");
                 },
-                _ => {}
+                _ => {
+                }
             }
         }
+        print!("\x1B[2K\r");
+        print!("{} > ", to);
+        stdout().flush().expect("TODO: panic message");
     }
+    Ok(())
 }
 
 fn say_sys(msg: &str) {
